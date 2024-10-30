@@ -1,3 +1,6 @@
+import GUI.SeatingLayout;
+import OBJECTS.MatrixSeats;
+
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
@@ -12,6 +15,7 @@ public class ClienteSocketGUI extends JFrame {
     private Socket socket;
     private PrintWriter out;
     private BufferedReader in;
+    private ArrayList<MatrixSeats> mapeo = new ArrayList<>();
 
     // Componentes de la interfaz
     private JTextField cantidadTextField;
@@ -25,12 +29,14 @@ public class ClienteSocketGUI extends JFrame {
     private Timer contadorTiempo;
     private int tiempoRestante = 15;
 
-    public ClienteSocketGUI() {
+    public ClienteSocketGUI() throws IOException {
         // Configuración de la interfaz
         setTitle("Solicitud de Asientos");
-        setSize(500, 400);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
+
+        //setUndecorated(true);
+        setExtendedState(JFrame.MAXIMIZED_BOTH);
 
         // Panel para la solicitud
         JPanel solicitudPanel = new JPanel(new GridLayout(3, 2, 5, 5));
@@ -70,9 +76,19 @@ public class ClienteSocketGUI extends JFrame {
         botonesPanel.add(aceptarButton);
         botonesPanel.add(cancelarButton);
 
-        add(solicitudPanel, BorderLayout.NORTH);
-        add(resultadoPanel, BorderLayout.CENTER);
-        add(botonesPanel, BorderLayout.SOUTH);
+        JPanel panelDerecho = new JPanel(new BorderLayout());
+        panelDerecho.add(solicitudPanel,BorderLayout.NORTH);
+        panelDerecho.add(resultadoPanel,BorderLayout.CENTER);
+        panelDerecho.add(botonesPanel,BorderLayout.SOUTH);
+
+        SeatingLayout seatingLayout = new SeatingLayout(new MatrixSeats());
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, seatingLayout, panelDerecho);
+        splitPane.setDividerLocation(600);
+
+        setLayout(new BorderLayout());
+        add(splitPane, BorderLayout.CENTER);
+        add(tiempoLabel,BorderLayout.NORTH);
 
         buscarButton.addActionListener(e -> enviarSolicitud());
         aceptarButton.addActionListener(e -> enviarConfirmacion());
@@ -128,6 +144,23 @@ public class ClienteSocketGUI extends JFrame {
             aceptarButton.setEnabled(true);
 
             iniciarContador();
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Error al conectar con el servidor.");
+        }
+    }
+
+    private void actualizarMapa() {
+        try {
+            socket = new Socket(SERVER_HOST, SERVER_PORT);
+            out = new PrintWriter(socket.getOutputStream(), true);
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
+            String mensaje = "mapping";
+            out.println(mensaje);
+            String respuesta = in.toString();
+            System.out.println("Respuesta: "+respuesta);
 
         } catch (Exception ex) {
             ex.printStackTrace();
