@@ -1,6 +1,7 @@
 package OBJECTS;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 public class MatrixSeats {
 
@@ -12,7 +13,7 @@ public class MatrixSeats {
         while (count <= 3) {
             ArrayList<Site> newRow = new ArrayList<>();
             for (int seat = 1; seat < 11; seat++) {
-                newRow.add(new Site(count, seat, 'R'));
+                newRow.add(new Site(count, seat, 'F'));
             }
             blockC.addRow(newRow);
             count++;
@@ -24,7 +25,7 @@ public class MatrixSeats {
         while (count <= 3) {
             ArrayList<Site> newRow = new ArrayList<>();
             for (int seat = 1; seat < 11; seat++) {
-                newRow.add(new Site(count, seat, 'O'));
+                newRow.add(new Site(count, seat, 'F'));
             }
             blockB.addRow(newRow);
             count++;
@@ -48,7 +49,7 @@ public class MatrixSeats {
         while (count <= 3) {
             ArrayList<Site> newRow = new ArrayList<>();
             for (int seat = 1; seat < 11; seat++) {
-                newRow.add(new Site(count, seat, 'S'));
+                newRow.add(new Site(count, seat, 'F'));
             }
             blockA1.addRow(newRow);
             count++;
@@ -81,6 +82,24 @@ public class MatrixSeats {
         Site site = getSite(block, row, seat);
         if (site != null) {
             site.setState(newState);
+        }
+    }
+
+    private char convertState(String stateServer){
+        switch (stateServer){
+            case "Sold":
+                return 'O';
+            case "Reserved":
+                return 'R';
+            default:
+                return 'F';
+        }
+    }
+
+    public void updateMatrixServer(String[][] info) {
+        for(String[] site: info) {
+            //System.out.println(Arrays.toString(site));
+            changeState(site[0], Integer.parseInt(site[2]), Integer.parseInt(site[3]), convertState(site[1]));
         }
     }
 

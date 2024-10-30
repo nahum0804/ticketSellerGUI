@@ -7,6 +7,7 @@ import java.awt.*;
 import java.io.*;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 public class ClienteSocketGUI extends JFrame {
     private static final String SERVER_HOST = "localhost";
@@ -15,7 +16,7 @@ public class ClienteSocketGUI extends JFrame {
     private Socket socket;
     private PrintWriter out;
     private BufferedReader in;
-    private ArrayList<MatrixSeats> mapeo = new ArrayList<>();
+    private MatrixSeats mapaPrincipal = new MatrixSeats();
 
     // Componentes de la interfaz
     private JTextField cantidadTextField;
@@ -81,7 +82,8 @@ public class ClienteSocketGUI extends JFrame {
         panelDerecho.add(resultadoPanel,BorderLayout.CENTER);
         panelDerecho.add(botonesPanel,BorderLayout.SOUTH);
 
-        SeatingLayout seatingLayout = new SeatingLayout(new MatrixSeats());
+        actualizarMapaPrincipal();
+        SeatingLayout seatingLayout = new SeatingLayout(mapaPrincipal);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, seatingLayout, panelDerecho);
         splitPane.setDividerLocation(600);
@@ -93,6 +95,7 @@ public class ClienteSocketGUI extends JFrame {
         buscarButton.addActionListener(e -> enviarSolicitud());
         aceptarButton.addActionListener(e -> enviarConfirmacion());
         cancelarButton.addActionListener(e -> cancelarOperacion());
+
     }
 
     private void enviarSolicitud() {
@@ -151,7 +154,7 @@ public class ClienteSocketGUI extends JFrame {
         }
     }
 
-    private void actualizarMapa() {
+    private void actualizarMapaPrincipal() {
         try {
             socket = new Socket(SERVER_HOST, SERVER_PORT);
             out = new PrintWriter(socket.getOutputStream(), true);
@@ -159,8 +162,17 @@ public class ClienteSocketGUI extends JFrame {
 
             String mensaje = "mapping";
             out.println(mensaje);
-            String respuesta = in.toString();
-            System.out.println("Respuesta: "+respuesta);
+            String respuesta = in.readLine();
+            String[][] formateado = Arrays.stream(respuesta.split("\\|"))
+                    .map(dato -> dato.split(","))
+                    .toArray(String[][]::new);
+
+            // Imprimir el arreglo formateado para ver el resultado
+            for (String[] asiento : formateado) {
+                System.out.println(Arrays.toString(asiento));
+            }
+            System.out.println(Arrays.deepToString(formateado));
+            mapaPrincipal.updateMatrixServer(formateado);
 
         } catch (Exception ex) {
             ex.printStackTrace();
