@@ -41,7 +41,7 @@ public class ClienteSocketGUI extends JFrame {
         solicitudPanel.add(cantidadTextField);
 
         solicitudPanel.add(new JLabel("Categoría:"));
-        categoriaComboBox = new JComboBox<>(new String[]{"A1", "A2", "VIP"});
+        categoriaComboBox = new JComboBox<>(new String[]{"VIP","A1","A2","B","C"});
         solicitudPanel.add(categoriaComboBox);
 
         buscarButton = new JButton("Buscar");
@@ -76,7 +76,7 @@ public class ClienteSocketGUI extends JFrame {
 
         buscarButton.addActionListener(e -> enviarSolicitud());
         aceptarButton.addActionListener(e -> enviarConfirmacion());
-        cancelarButton.addActionListener(e -> cancelarOperacion());
+        cancelarButton.addActionListener(e -> cancelarEspacios());
     }
 
     private void enviarSolicitud() {
@@ -88,7 +88,7 @@ public class ClienteSocketGUI extends JFrame {
             int cantidad;
             try {
                 cantidad = Integer.parseInt(cantidadTextField.getText());
-                if (cantidad <= 0 || cantidad > 10) {
+                if (cantidad <= 0 || cantidad > 30) {
                     JOptionPane.showMessageDialog(this, "La cantidad de asientos debe ser entre 1 y 10.");
                     return;
                 }
@@ -153,7 +153,7 @@ public class ClienteSocketGUI extends JFrame {
             aceptarButton.setEnabled(false);
 
             // Cerrar conexión
-            cerrarConexion();
+            cancelarEspacios();
 
             // Detener el contador de tiempo
             if (contadorTiempo != null) {
@@ -166,8 +166,8 @@ public class ClienteSocketGUI extends JFrame {
         }
     }
 
-    private void cancelarOperacion() {
-        cerrarConexion();
+    private void cancelarEspacios() {
+        out.println("no");
         limpiarResultados();
         tiempoLabel.setVisible(false);
         if (contadorTiempo != null) {
@@ -187,19 +187,10 @@ public class ClienteSocketGUI extends JFrame {
             if (tiempoRestante <= 0) {
                 ((Timer) e.getSource()).stop();
                 tiempoLabel.setText("Tiempo de confirmación agotado.");
-                cerrarConexion();
+                cancelarEspacios();
             }
         });
         contadorTiempo.start();
-    }
-
-    private void cerrarConexion() {
-        try {
-            out.println("no");
-            if (in != null) in.close();
-        } catch (IOException ex) {
-            ex.printStackTrace();
-        }
     }
 
     private void limpiarResultados() {
