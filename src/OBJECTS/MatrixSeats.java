@@ -86,14 +86,11 @@ public class MatrixSeats {
     }
 
     private char convertState(String stateServer){
-        switch (stateServer){
-            case "Sold":
-                return 'O';
-            case "Reserved":
-                return 'R';
-            default:
-                return 'F';
-        }
+        return switch (stateServer) {
+            case "Sold" -> 'O';
+            case "Reserved" -> 'R';
+            default -> 'F';
+        };
     }
 
     public void updateMatrixServer(String[][] info) {

@@ -12,11 +12,11 @@ import java.util.Arrays;
 public class ClienteSocketGUI extends JFrame {
     private static final String SERVER_HOST = "localhost";
     private static final int SERVER_PORT = 7878;
+    private MatrixSeats mapaPrincipal = new MatrixSeats();
 
     private Socket socket;
     private PrintWriter out;
     private BufferedReader in;
-    private MatrixSeats mapaPrincipal = new MatrixSeats();
 
     // Componentes de la interfaz
     private JTextField cantidadTextField;
@@ -29,6 +29,7 @@ public class ClienteSocketGUI extends JFrame {
 
     private Timer contadorTiempo;
     private int tiempoRestante = 15;
+    private SeatingLayout seatingLayout;
 
     public ClienteSocketGUI() throws IOException {
         // Configuración de la interfaz
@@ -36,10 +37,10 @@ public class ClienteSocketGUI extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
-        //setUndecorated(true);
+        // Configuración de tamaño de ventana
         setExtendedState(JFrame.MAXIMIZED_BOTH);
 
-        // Panel para la solicitud
+        // Panel de solicitud
         JPanel solicitudPanel = new JPanel(new GridLayout(3, 2, 5, 5));
         solicitudPanel.setBorder(BorderFactory.createTitledBorder("Solicitud de Asientos"));
 
@@ -78,24 +79,49 @@ public class ClienteSocketGUI extends JFrame {
         botonesPanel.add(cancelarButton);
 
         JPanel panelDerecho = new JPanel(new BorderLayout());
-        panelDerecho.add(solicitudPanel,BorderLayout.NORTH);
-        panelDerecho.add(resultadoPanel,BorderLayout.CENTER);
-        panelDerecho.add(botonesPanel,BorderLayout.SOUTH);
+        panelDerecho.add(solicitudPanel, BorderLayout.NORTH);
+        panelDerecho.add(resultadoPanel, BorderLayout.CENTER);
+        panelDerecho.add(botonesPanel, BorderLayout.SOUTH);
 
+        seatingLayout = new SeatingLayout(mapaPrincipal);  // Guardamos la referencia
         actualizarMapaPrincipal();
-        SeatingLayout seatingLayout = new SeatingLayout(mapaPrincipal);
-
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, seatingLayout, panelDerecho);
         splitPane.setDividerLocation(600);
 
         setLayout(new BorderLayout());
         add(splitPane, BorderLayout.CENTER);
-        add(tiempoLabel,BorderLayout.NORTH);
+        add(tiempoLabel, BorderLayout.NORTH);
 
         buscarButton.addActionListener(e -> enviarSolicitud());
         aceptarButton.addActionListener(e -> enviarConfirmacion());
-        cancelarButton.addActionListener(e -> cancelarOperacion());
+        cancelarButton.addActionListener(e -> cancelarEspacios());
 
+    }
+
+    private void actualizarMapaPrincipal() {
+        try {
+            Socket socket1 = new Socket(SERVER_HOST, SERVER_PORT);
+            PrintWriter out1 = new PrintWriter(socket1.getOutputStream(), true);
+            BufferedReader in1 = new BufferedReader(new InputStreamReader(socket1.getInputStream()));
+
+            String mensaje = "mapping";
+            out1.println(mensaje);
+            String respuesta = in1.readLine();
+            String[][] formateado = Arrays.stream(respuesta.split("\\|"))
+                    .map(dato -> dato.split(","))
+                    .toArray(String[][]::new);
+
+            mapaPrincipal.updateMatrixServer(formateado);
+
+            // Actualiza SeatingLayout después de actualizar el mapa
+            seatingLayout.updateLayout(mapaPrincipal); // Método que deberás implementar en SeatingLayout
+            seatingLayout.revalidate();
+            seatingLayout.repaint();
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Error al conectar con el servidor.");
+        }
     }
 
     private void enviarSolicitud() {
@@ -107,7 +133,7 @@ public class ClienteSocketGUI extends JFrame {
             int cantidad;
             try {
                 cantidad = Integer.parseInt(cantidadTextField.getText());
-                if (cantidad <= 0 || cantidad > 10) {
+                if (cantidad <= 0 || cantidad > 30) {
                     JOptionPane.showMessageDialog(this, "La cantidad de asientos debe ser entre 1 y 10.");
                     return;
                 }
@@ -142,37 +168,12 @@ public class ClienteSocketGUI extends JFrame {
             tiempoLabel.setVisible(true);
 
             actualizarTabla(resultados);
+            actualizarMapaPrincipal();
 
 
             aceptarButton.setEnabled(true);
 
             iniciarContador();
-
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            JOptionPane.showMessageDialog(this, "Error al conectar con el servidor.");
-        }
-    }
-
-    private void actualizarMapaPrincipal() {
-        try {
-            socket = new Socket(SERVER_HOST, SERVER_PORT);
-            out = new PrintWriter(socket.getOutputStream(), true);
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
-            String mensaje = "mapping";
-            out.println(mensaje);
-            String respuesta = in.readLine();
-            String[][] formateado = Arrays.stream(respuesta.split("\\|"))
-                    .map(dato -> dato.split(","))
-                    .toArray(String[][]::new);
-
-            // Imprimir el arreglo formateado para ver el resultado
-            for (String[] asiento : formateado) {
-                System.out.println(Arrays.toString(asiento));
-            }
-            System.out.println(Arrays.deepToString(formateado));
-            mapaPrincipal.updateMatrixServer(formateado);
 
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -198,26 +199,30 @@ public class ClienteSocketGUI extends JFrame {
             aceptarButton.setEnabled(false);
 
             // Cerrar conexión
-            cerrarConexion();
+            cancelarEspacios();
 
             // Detener el contador de tiempo
             if (contadorTiempo != null) {
                 contadorTiempo.stop();
             }
+            actualizarMapaPrincipal();
 
         } catch (Exception ex) {
             ex.printStackTrace();
             JOptionPane.showMessageDialog(this, "Error al enviar la confirmación.");
+            actualizarMapaPrincipal();
         }
     }
 
-    private void cancelarOperacion() {
-        cerrarConexion();
+
+    private void cancelarEspacios() {
+        out.println("no");
         limpiarResultados();
         tiempoLabel.setVisible(false);
         if (contadorTiempo != null) {
             contadorTiempo.stop();
         }
+        actualizarMapaPrincipal();
     }
 
     private void iniciarContador() {
@@ -232,19 +237,10 @@ public class ClienteSocketGUI extends JFrame {
             if (tiempoRestante <= 0) {
                 ((Timer) e.getSource()).stop();
                 tiempoLabel.setText("Tiempo de confirmación agotado.");
-                cerrarConexion();
+                cancelarEspacios();
             }
         });
         contadorTiempo.start();
-    }
-
-    private void cerrarConexion() {
-        try {
-            out.println("no");
-            if (in != null) in.close();
-        } catch (IOException ex) {
-            ex.printStackTrace();
-        }
     }
 
     private void limpiarResultados() {
