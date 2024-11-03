@@ -1,8 +1,12 @@
 import GUI.SeatingLayout;
 import OBJECTS.MatrixSeats;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.io.*;
 import java.net.Socket;
@@ -49,7 +53,7 @@ public class ClienteSocketGUI extends JFrame {
         solicitudPanel.add(cantidadTextField);
 
         solicitudPanel.add(new JLabel("Categoría:"));
-        categoriaComboBox = new JComboBox<>(new String[]{"A1", "A2", "VIP"});
+        categoriaComboBox = new JComboBox<>(new String[]{"VIP", "A1", "A2", "B", "C"});
         solicitudPanel.add(categoriaComboBox);
 
         buscarButton = new JButton("Buscar");
@@ -65,6 +69,26 @@ public class ClienteSocketGUI extends JFrame {
         resultadoPanel.setBorder(BorderFactory.createTitledBorder("Resultado"));
 
         resultadosTable = new JTable(new DefaultTableModel(new Object[]{"Respuesta del Servidor"}, 0));
+
+        resultadosTable.getSelectionModel().addListSelectionListener(e -> {
+            // Solo continuamos si no hay ajustes en curso para evitar reentradas
+            if (!e.getValueIsAdjusting()) {
+                int selectedRow = resultadosTable.getSelectedRow();
+
+                if (selectedRow != -1) {
+                    // Hay una fila seleccionada
+                    aceptarButton.setEnabled(true);
+                    System.out.println("Índice de fila seleccionada: " + selectedRow);
+
+                    // Opcional: Mostrar el índice en algún JLabel o componente de la GUI
+                    // ejemploLabel.setText("Índice de seleccionado: " + selectedRow);
+                } else {
+                    // No hay ninguna fila seleccionada
+                    aceptarButton.setEnabled(false);
+                }
+            }
+        });
+
         resultadoPanel.add(new JScrollPane(resultadosTable), BorderLayout.CENTER);
 
         aceptarButton = new JButton("Aceptar");
@@ -125,55 +149,85 @@ public class ClienteSocketGUI extends JFrame {
     }
 
     private void enviarSolicitud() {
-        try {
-            socket = new Socket(SERVER_HOST, SERVER_PORT);
-            out = new PrintWriter(socket.getOutputStream(), true);
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        String host = "127.0.0.1";
+        int puerto = 7878;
 
-            int cantidad;
+        try (Socket socket = new Socket(host, puerto);
+             OutputStream out = socket.getOutputStream();
+             DataInputStream in = new DataInputStream(socket.getInputStream())) {
+
+            //Obtener comando de los textbox
+            String comando = cantidadTextField.getText() + "/" + categoriaComboBox.getSelectedItem() ;
+            // Enviar el comando al servidor usando writeBytes en lugar de writeUTF
+            out.write(comando.getBytes("UTF-8"));
+            out.flush();
+
+            // Leer la respuesta del servidor
+            StringBuilder respuesta = new StringBuilder();
+            int length;
+            byte[] buffer = new byte[1024];
+            while ((length = in.read(buffer)) != -1) {
+                respuesta.append(new String(buffer, 0, length));
+                if (in.available() == 0) break; // salir si no hay más datos
+            }
+
+            System.out.println("Respuesta del servidor en bruto (JSON):");
+            System.out.println(respuesta.toString());
+
+            // Intentar parsear la respuesta como JSON
             try {
-                cantidad = Integer.parseInt(cantidadTextField.getText());
-                if (cantidad <= 0 || cantidad > 30) {
-                    JOptionPane.showMessageDialog(this, "La cantidad de asientos debe ser entre 1 y 10.");
+                JSONArray datos = new JSONArray(respuesta.toString());
+                ArrayList<String> listaCombinaciones = new ArrayList<>();
+
+                System.out.println("Datos recibidos (parseados):");
+                System.out.println(datos.toString());
+
+                if (datos.isEmpty()) {
+                    System.out.println("No se encontraron asientos disponibles.");
                     return;
                 }
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "Introduce un número válido para la cantidad de asientos.");
-                return;
-            }
 
-            String categoria = (String) categoriaComboBox.getSelectedItem();
-            String mensaje = cantidad + "/" + categoria;
+                for (int i = 0; i < datos.length(); i++) {
+                    JSONArray combinacion = datos.getJSONArray(i);
+                    StringBuilder combinacionString = new StringBuilder("Combinación " + (i + 1) + ":\n");
 
-            // Envair al server ls asientos data
-            long startTime = System.currentTimeMillis();
-            out.println(mensaje);
-            System.out.println("Mensaje enviado al servidor: " + mensaje);
+                    for (int j = 0; j < combinacion.length(); j++) {
+                        JSONObject asiento = combinacion.getJSONObject(j);
+                        combinacionString.append("  Fila: ").append(asiento.getInt("row_index"))
+                                .append(", Asiento: ").append(asiento.getInt("site_index"))
+                                .append("\n");
+                    }
 
-            // Leer y almacenar respuestas del servidor para cada asiento solicitado
-            ArrayList<String> resultados = new ArrayList<>();
-            for (int i = 0; i < cantidad; i++) {
-                String respuesta = in.readLine();
-                if (respuesta != null) {
-                    System.out.println("Respuesta del servidor: " + respuesta);
-                    resultados.add(respuesta);
+                    listaCombinaciones.add(combinacionString.toString()); // Añadir la combinación como texto a la lista
                 }
+
+                // Actualizar la tabla con las combinaciones
+                actualizarTabla(listaCombinaciones);
+
+                iniciarContador();
+
+                // Solicitar confirmación del usuario
+                System.out.println("\nIntroduce un número para seleccionar la combinación deseada (0, 1, o 2), o -1 para cancelar la compra:");
+                String confirmacion = new java.util.Scanner(System.in).nextLine();
+
+                // Enviar la confirmación (índice de combinación o -1)
+                out.write(confirmacion.getBytes("UTF-8"));
+                out.flush();
+
+                // Leer la respuesta de confirmación del servidor
+                respuesta.setLength(0);  // Limpiar el buffer de respuesta
+                while ((length = in.read(buffer)) != -1) {
+                    respuesta.append(new String(buffer, 0, length));
+                    if (in.available() == 0) break;
+                }
+
+                System.out.println("Respuesta de confirmación del servidor:");
+                System.out.println(respuesta.toString());
+
+            } catch (Exception e) {
+                System.out.println("Error: La respuesta del servidor no es un JSON válido.");
+                System.out.println("Respuesta recibida: " + respuesta);
             }
-
-            long endTime = System.currentTimeMillis();
-            double tiempoRespuesta = (endTime - startTime) / 1000.0;
-            System.out.println("Tiempo de respuesta total: " + tiempoRespuesta + " segundos");
-
-            tiempoLabel.setText("Tiempo de respuesta: " + tiempoRespuesta + " segundos");
-            tiempoLabel.setVisible(true);
-
-            actualizarTabla(resultados);
-            actualizarMapaPrincipal();
-
-
-            aceptarButton.setEnabled(true);
-
-            iniciarContador();
 
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -183,10 +237,12 @@ public class ClienteSocketGUI extends JFrame {
 
     private void enviarConfirmacion() {
         try {
-            out.println("yes");
+            // Pasar indice de los asientos seleccionados
+            // ------- Buscar funcionalidad de SeatingLayout para obtener los asientos seleccionados
+            out.println(1);
             System.out.println("Confirmación enviada al servidor: yes");
 
-            // Leer respuesta fina
+            // Leer respuesta final
             String respuestaFinal = in.readLine();
             if (respuestaFinal != null) {
                 System.out.println("Respuesta final del servidor: " + respuestaFinal);
@@ -216,17 +272,15 @@ public class ClienteSocketGUI extends JFrame {
 
 
     private void cancelarEspacios() {
-        out.println("no");
+        out.println(-1);
         limpiarResultados();
         tiempoLabel.setVisible(false);
-        if (contadorTiempo != null) {
-            contadorTiempo.stop();
-        }
+
         actualizarMapaPrincipal();
     }
 
     private void iniciarContador() {
-        tiempoRestante = 15;
+        tiempoRestante = 120;
         tiempoLabel.setText("Tiempo restante: " + tiempoRestante + " segundos");
         tiempoLabel.setVisible(true);
 
@@ -252,7 +306,7 @@ public class ClienteSocketGUI extends JFrame {
         DefaultTableModel model = (DefaultTableModel) resultadosTable.getModel();
         model.setRowCount(0);
         for (String dato : datos) {
-            model.addRow(new Object[]{dato});
+            model.addRow(new Object[]{dato}); // Añadir cada combinación como una fila en la tabla
         }
     }
 }
