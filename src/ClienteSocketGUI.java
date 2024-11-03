@@ -79,9 +79,6 @@ public class ClienteSocketGUI extends JFrame {
                     // Hay una fila seleccionada
                     aceptarButton.setEnabled(true);
                     System.out.println("Índice de fila seleccionada: " + selectedRow);
-
-                    // Opcional: Mostrar el índice en algún JLabel o componente de la GUI
-                    // ejemploLabel.setText("Índice de seleccionado: " + selectedRow);
                 } else {
                     // No hay ninguna fila seleccionada
                     aceptarButton.setEnabled(false);
@@ -107,7 +104,7 @@ public class ClienteSocketGUI extends JFrame {
         panelDerecho.add(resultadoPanel, BorderLayout.CENTER);
         panelDerecho.add(botonesPanel, BorderLayout.SOUTH);
 
-        seatingLayout = new SeatingLayout(mapaPrincipal);  // Guardamos la referencia
+        seatingLayout = new SeatingLayout(mapaPrincipal);
         actualizarMapaPrincipal();
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, seatingLayout, panelDerecho);
         splitPane.setDividerLocation(600);
@@ -207,9 +204,10 @@ public class ClienteSocketGUI extends JFrame {
                 iniciarContador();
 
                 // Solicitar confirmación del usuario
-                System.out.println("\nIntroduce un número para seleccionar la combinación deseada (0, 1, o 2), o -1 para cancelar la compra:");
-                String confirmacion = new java.util.Scanner(System.in).nextLine();
+                //System.out.println("\nIntroduce un número para seleccionar la combinación deseada (0, 1, o 2), o -1 para cancelar la compra:");
+                //String confirmacion = new java.util.Scanner(System.in).nextLine();
 
+                String confirmacion = "0";  // Confirmar la primera combinación por defecto
                 // Enviar la confirmación (índice de combinación o -1)
                 out.write(confirmacion.getBytes("UTF-8"));
                 out.flush();
@@ -237,32 +235,21 @@ public class ClienteSocketGUI extends JFrame {
 
     private void enviarConfirmacion() {
         try {
-            // Pasar indice de los asientos seleccionados
-            // ------- Buscar funcionalidad de SeatingLayout para obtener los asientos seleccionados
-            out.println(1);
-            System.out.println("Confirmación enviada al servidor: yes");
+            int selectedRow = resultadosTable.getSelectedRow();
+            if (selectedRow == -1) {
+                out.println(selectedRow);
+                System.out.println("Confirmación enviada al servidor (puntero): " + selectedRow);
 
-            // Leer respuesta final
-            String respuestaFinal = in.readLine();
-            if (respuestaFinal != null) {
-                System.out.println("Respuesta final del servidor: " + respuestaFinal);
-                ArrayList<String> resultadosFinal = new ArrayList<>();
-                resultadosFinal.add(respuestaFinal);
-                actualizarTabla(resultadosFinal);
+                // Deshabilitar el botón "Aceptar" para evitar reenvíos accidentales
+                aceptarButton.setEnabled(false);
+                // Detener el contador de tiempo
+                if (contadorTiempo != null) {
+                    contadorTiempo.stop();
+                }
+                tiempoLabel.setVisible(false);
+                limpiarResultados();
+                actualizarMapaPrincipal();
             }
-
-            // Deshabilitar el botón "Aceptar" para evitar reenvíos accidentales
-            aceptarButton.setEnabled(false);
-
-            // Cerrar conexión
-            cancelarEspacios();
-
-            // Detener el contador de tiempo
-            if (contadorTiempo != null) {
-                contadorTiempo.stop();
-            }
-            actualizarMapaPrincipal();
-
         } catch (Exception ex) {
             ex.printStackTrace();
             JOptionPane.showMessageDialog(this, "Error al enviar la confirmación.");
@@ -275,6 +262,10 @@ public class ClienteSocketGUI extends JFrame {
         out.println(-1);
         limpiarResultados();
         tiempoLabel.setVisible(false);
+
+        if (contadorTiempo != null) {
+            contadorTiempo.stop();
+        }
 
         actualizarMapaPrincipal();
     }
@@ -299,7 +290,9 @@ public class ClienteSocketGUI extends JFrame {
 
     private void limpiarResultados() {
         DefaultTableModel model = (DefaultTableModel) resultadosTable.getModel();
-        model.setRowCount(0);
+        while (model.getRowCount() > 0) {
+            model.removeRow(0);
+        }
     }
 
     private void actualizarTabla(ArrayList<String> datos) {
