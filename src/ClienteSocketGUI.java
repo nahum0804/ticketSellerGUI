@@ -19,7 +19,7 @@ public class ClienteSocketGUI extends JFrame {
     private MatrixSeats mapaPrincipal = new MatrixSeats();
 
     private Socket socket;
-    private PrintWriter out;
+    private OutputStream out;
     private BufferedReader in;
 
     // Componentes de la interfaz
@@ -34,6 +34,8 @@ public class ClienteSocketGUI extends JFrame {
     private Timer contadorTiempo;
     private int tiempoRestante = 15;
     private SeatingLayout seatingLayout;
+    private ArrayList<ArrayList<String[]>> options = new ArrayList<>();
+    private int opcionAnterior = -1;
 
     public ClienteSocketGUI() throws IOException {
         // Configuración de la interfaz
@@ -78,7 +80,12 @@ public class ClienteSocketGUI extends JFrame {
                 if (selectedRow != -1) {
                     // Hay una fila seleccionada
                     aceptarButton.setEnabled(true);
-                    System.out.println("Índice de fila seleccionada: " + selectedRow);
+                    if(options != null){
+                        ArrayList<String[]> selectedList = options.get(selectedRow);
+                        String[][] selectedOption = selectedList.toArray(new String[selectedList.size()][]);
+                        changueOption(selectedOption);
+                        opcionAnterior = selectedRow;
+                    }
                 } else {
                     // No hay ninguna fila seleccionada
                     aceptarButton.setEnabled(false);
@@ -113,9 +120,21 @@ public class ClienteSocketGUI extends JFrame {
         add(splitPane, BorderLayout.CENTER);
         add(tiempoLabel, BorderLayout.NORTH);
 
-        buscarButton.addActionListener(e -> enviarSolicitud());
+        buscarButton.addActionListener(e -> {
+            try {
+                enviarSolicitud();
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+        });
         aceptarButton.addActionListener(e -> enviarConfirmacion());
-        cancelarButton.addActionListener(e -> cancelarEspacios());
+        cancelarButton.addActionListener(e -> {
+            try {
+                cancelarEspacios();
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+        });
 
     }
 
@@ -128,6 +147,7 @@ public class ClienteSocketGUI extends JFrame {
             String mensaje = "mapping";
             out1.println(mensaje);
             String respuesta = in1.readLine();
+
             String[][] formateado = Arrays.stream(respuesta.split("\\|"))
                     .map(dato -> dato.split(","))
                     .toArray(String[][]::new);
@@ -145,13 +165,60 @@ public class ClienteSocketGUI extends JFrame {
         }
     }
 
-    private void enviarSolicitud() {
+    private void actualizarMapaPrincipal(MatrixSeats data) {
+        try {
+            Socket socket1 = new Socket(SERVER_HOST, SERVER_PORT);
+            PrintWriter out1 = new PrintWriter(socket1.getOutputStream(), true);
+            BufferedReader in1 = new BufferedReader(new InputStreamReader(socket1.getInputStream()));
+
+            String mensaje = "mapping";
+            out1.println(mensaje);
+            String respuesta = in1.readLine();
+
+            String[][] formateado = Arrays.stream(respuesta.split("\\|"))
+                    .map(dato -> dato.split(","))
+                    .toArray(String[][]::new);
+            mapaPrincipal = data;
+            mapaPrincipal.updateMatrixServer(formateado);
+
+            // Actualiza SeatingLayout después de actualizar el mapa
+            seatingLayout.updateLayout(mapaPrincipal); // Método que deberás implementar en SeatingLayout
+            seatingLayout.revalidate();
+            seatingLayout.repaint();
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Error al conectar con el servidor.");
+        }
+    }
+
+    private void changueOption(String[][] option) {
+        if(opcionAnterior!=-1){
+            ArrayList<String[]> selectedList = options.get(opcionAnterior);
+            String[][] selectedOption = selectedList.toArray(new String[selectedList.size()][]);
+            mapaPrincipal.deleteOption(selectedOption);
+        }
+        try {
+            mapaPrincipal.updateMatrixServer(option);
+
+            // Actualiza SeatingLayout después de actualizar el mapa
+            seatingLayout.updateLayout(mapaPrincipal); // Método que deberás implementar en SeatingLayout
+            seatingLayout.revalidate();
+            seatingLayout.repaint();
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Error al conectar con el servidor.");
+        }
+    }
+
+    private void enviarSolicitud() throws IOException {
         String host = "127.0.0.1";
         int puerto = 7878;
 
-        try (Socket socket = new Socket(host, puerto);
-             OutputStream out = socket.getOutputStream();
-             DataInputStream in = new DataInputStream(socket.getInputStream())) {
+             socket = new Socket(host, puerto);
+             out = socket.getOutputStream();
+             DataInputStream in = new DataInputStream(socket.getInputStream());
 
             //Obtener comando de los textbox
             String comando = cantidadTextField.getText() + "/" + categoriaComboBox.getSelectedItem() ;
@@ -170,6 +237,8 @@ public class ClienteSocketGUI extends JFrame {
 
             System.out.println("Respuesta del servidor en bruto (JSON):");
             System.out.println(respuesta.toString());
+            actualizarMapaPrincipal();
+
 
             // Intentar parsear la respuesta como JSON
             try {
@@ -183,61 +252,49 @@ public class ClienteSocketGUI extends JFrame {
                     System.out.println("No se encontraron asientos disponibles.");
                     return;
                 }
-
+                options.clear();
                 for (int i = 0; i < datos.length(); i++) {
                     JSONArray combinacion = datos.getJSONArray(i);
                     StringBuilder combinacionString = new StringBuilder("Combinación " + (i + 1) + ":\n");
+                    ArrayList<String[]> option = new ArrayList<>();
 
                     for (int j = 0; j < combinacion.length(); j++) {
                         JSONObject asiento = combinacion.getJSONObject(j);
+                        String[] site = new String[4];
+                        site[0] = categoriaComboBox.getSelectedItem().toString();
+                        site[1] = "Selected";
+                        site[2] = String.valueOf(asiento.getInt("row_index")+1);
+                        site[3] = String.valueOf(asiento.getInt("site_index"));
+                        option.add(site);
                         combinacionString.append("  Fila: ").append(asiento.getInt("row_index"))
                                 .append(", Asiento: ").append(asiento.getInt("site_index"))
                                 .append("\n");
                     }
-
+                    options.add(option);
                     listaCombinaciones.add(combinacionString.toString()); // Añadir la combinación como texto a la lista
                 }
+
+
 
                 // Actualizar la tabla con las combinaciones
                 actualizarTabla(listaCombinaciones);
 
                 iniciarContador();
 
-                // Solicitar confirmación del usuario
-                //System.out.println("\nIntroduce un número para seleccionar la combinación deseada (0, 1, o 2), o -1 para cancelar la compra:");
-                //String confirmacion = new java.util.Scanner(System.in).nextLine();
-
-                String confirmacion = "0";  // Confirmar la primera combinación por defecto
-                // Enviar la confirmación (índice de combinación o -1)
-                out.write(confirmacion.getBytes("UTF-8"));
-                out.flush();
-
-                // Leer la respuesta de confirmación del servidor
-                respuesta.setLength(0);  // Limpiar el buffer de respuesta
-                while ((length = in.read(buffer)) != -1) {
-                    respuesta.append(new String(buffer, 0, length));
-                    if (in.available() == 0) break;
-                }
-
-                System.out.println("Respuesta de confirmación del servidor:");
-                System.out.println(respuesta.toString());
-
             } catch (Exception e) {
                 System.out.println("Error: La respuesta del servidor no es un JSON válido.");
                 System.out.println("Respuesta recibida: " + respuesta);
             }
 
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            JOptionPane.showMessageDialog(this, "Error al conectar con el servidor.");
-        }
     }
 
     private void enviarConfirmacion() {
         try {
             int selectedRow = resultadosTable.getSelectedRow();
-            if (selectedRow == -1) {
-                out.println(selectedRow);
+            if (selectedRow != -1) {
+                String data = "" + selectedRow;
+                out.write(data.getBytes("UTF-8"));
+                out.flush();
                 System.out.println("Confirmación enviada al servidor (puntero): " + selectedRow);
 
                 // Deshabilitar el botón "Aceptar" para evitar reenvíos accidentales
@@ -248,7 +305,7 @@ public class ClienteSocketGUI extends JFrame {
                 }
                 tiempoLabel.setVisible(false);
                 limpiarResultados();
-                actualizarMapaPrincipal();
+                actualizarMapaPrincipal(new MatrixSeats());
             }
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -257,9 +314,9 @@ public class ClienteSocketGUI extends JFrame {
         }
     }
 
-
-    private void cancelarEspacios() {
-        out.println(-1);
+    private void cancelarEspacios() throws IOException {
+        out.write("-1".getBytes("UTF-8"));
+        out.flush();
         limpiarResultados();
         tiempoLabel.setVisible(false);
 
@@ -267,7 +324,7 @@ public class ClienteSocketGUI extends JFrame {
             contadorTiempo.stop();
         }
 
-        actualizarMapaPrincipal();
+        actualizarMapaPrincipal(new MatrixSeats());
     }
 
     private void iniciarContador() {
@@ -282,7 +339,12 @@ public class ClienteSocketGUI extends JFrame {
             if (tiempoRestante <= 0) {
                 ((Timer) e.getSource()).stop();
                 tiempoLabel.setText("Tiempo de confirmación agotado.");
-                cancelarEspacios();
+                try {
+                    cancelarEspacios();
+                } catch (IOException ex) {
+                    throw new RuntimeException(ex);
+                }
+                actualizarMapaPrincipal(new MatrixSeats());
             }
         });
         contadorTiempo.start();
@@ -301,5 +363,25 @@ public class ClienteSocketGUI extends JFrame {
         for (String dato : datos) {
             model.addRow(new Object[]{dato}); // Añadir cada combinación como una fila en la tabla
         }
+    }
+
+    public static String[][] combinarMatrices(String[][] matriz1, String[][] matriz2) {
+        int filasMatriz1 = matriz1.length;
+        int filasMatriz2 = matriz2.length;
+
+        // Crear un nuevo arreglo con la suma de las filas de ambos arreglos
+        String[][] combinado = new String[filasMatriz1 + filasMatriz2][];
+
+        // Copiar los elementos de matriz1 al nuevo arreglo
+        for (int i = 0; i < filasMatriz1; i++) {
+            combinado[i] = matriz1[i];
+        }
+
+        // Copiar los elementos de matriz2 al nuevo arreglo, empezando desde donde terminó matriz1
+        for (int i = 0; i < filasMatriz2; i++) {
+            combinado[filasMatriz1 + i] = matriz2[i];
+        }
+
+        return combinado;
     }
 }

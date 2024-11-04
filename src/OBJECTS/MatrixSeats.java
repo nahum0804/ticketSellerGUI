@@ -89,14 +89,24 @@ public class MatrixSeats {
         return switch (stateServer) {
             case "Sold" -> 'O';
             case "Reserved" -> 'R';
+            case "Selected" -> 'S';
             default -> 'F';
         };
     }
 
     public void updateMatrixServer(String[][] info) {
+        //System.out.println(Arrays.deepToString(info));
         for(String[] site: info) {
             //System.out.println(Arrays.toString(site));
             changeState(site[0], Integer.parseInt(site[2]), Integer.parseInt(site[3]), convertState(site[1]));
+        }
+    }
+
+    public void deleteOption(String[][] info) {
+        //System.out.println(Arrays.deepToString(info));
+        for(String[] site: info) {
+            //System.out.println(Arrays.toString(site));
+            changeState(site[0], Integer.parseInt(site[2]), Integer.parseInt(site[3]), 'R');
         }
     }
 
