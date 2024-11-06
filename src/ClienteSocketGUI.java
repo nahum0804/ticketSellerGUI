@@ -1,4 +1,5 @@
 import GUI.SeatingLayout;
+import GUI.PaymentPlugin;
 import OBJECTS.MatrixSeats;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -10,13 +11,23 @@ import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.io.*;
 import java.net.Socket;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.jar.JarFile;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class ClienteSocketGUI extends JFrame {
     private static final String SERVER_HOST = "localhost";
     private static final int SERVER_PORT = 7878;
+    static final String PLUGIN_FOLDER="src/Plugins";
     private MatrixSeats mapaPrincipal = new MatrixSeats();
+    private Map<String,Class> clasesCargadas;
+    private Map<String,Class> clasesInstanciables;
 
     private Socket socket;
     private OutputStream out;
@@ -37,7 +48,77 @@ public class ClienteSocketGUI extends JFrame {
     private ArrayList<ArrayList<String[]>> options = new ArrayList<>();
     private int opcionAnterior = -1;
 
+    private static Map cargarPlugins(){
+        Map<String, Class> classList = new HashMap<>();
+        //LinkedList<> classList = new LinkedList();
+        File pluginFolder=new File(PLUGIN_FOLDER);
+        if(!pluginFolder.exists())
+        {
+            if(pluginFolder.mkdirs())
+            {
+                System.out.println("Created plugin folder");
+            }
+        }
+        File[] files=pluginFolder.listFiles((dir, name) -> name.endsWith(".jar"));
+        ArrayList<URL> urls=new ArrayList<>();
+        ArrayList<String> classes=new ArrayList<>();
+        if(files!=null) {
+            Arrays.stream(files).forEach(file -> {
+                try {
+                    JarFile jarFile=new JarFile(file);
+                    urls.add(new URL("jar:file:"+PLUGIN_FOLDER+"/"+file.getName()+"!/"));
+                    jarFile.stream().forEach(jarEntry -> {
+                        if(jarEntry.getName().endsWith(".class"))
+                        {
+                            classes.add(jarEntry.getName());
+                        }
+                    });
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+            URLClassLoader pluginLoader=new URLClassLoader(urls.toArray(new URL[urls.size()]));
+
+            classes.forEach(s -> {
+                try {
+                    StringBuilder s1 = new StringBuilder();
+                    s1.append(s);
+                    s1.reverse();
+                    String name = s1.substring(0,s1.indexOf("/"));
+                    s1 = new StringBuilder();
+                    name = s1.append(name).substring(s1.indexOf(".")+1,s1.length());
+                    s1 = new StringBuilder();
+                    name = s1.append(name).reverse().toString();
+                    Class classs=pluginLoader.loadClass(s.replaceAll("/",".").replace(".class",""));
+                    classList.put(name,classs);
+                }   catch (ClassNotFoundException ex) {
+                    Logger.getLogger(ClienteSocketGUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+            });
+        }
+        return classList;
+    }
+
+    public static Map cargarClasesInstanciables(Map listaClases){
+        Map<String, Class> clasesInstanciables = new HashMap<String,Class>();
+        //LinkedList clasesInstanciables = new LinkedList();
+        listaClases.forEach((c,v) -> {
+            Class[] interfaces=((Class)v).getInterfaces();
+            for (Class anInterface : interfaces) {
+                if(anInterface==PaymentPlugin.class){
+                    clasesInstanciables.put(((String)c),((Class)v));
+                }
+            }
+
+        });
+        return clasesInstanciables;
+    }
+
     public ClienteSocketGUI() throws IOException {
+        this.clasesCargadas = cargarPlugins();
+        this.clasesInstanciables = cargarClasesInstanciables(clasesCargadas);
+        System.out.println(clasesCargadas);
+        System.out.println(clasesInstanciables);
         // Configuración de la interfaz
         setTitle("Solicitud de Asientos");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
