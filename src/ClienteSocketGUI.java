@@ -9,7 +9,10 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.*;
+import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -28,6 +31,7 @@ public class ClienteSocketGUI extends JFrame {
     private MatrixSeats mapaPrincipal = new MatrixSeats();
     private Map<String,Class> clasesCargadas;
     private Map<String,Class> clasesInstanciables;
+    private boolean ventaRealizada = false;
 
     private Socket socket;
     private OutputStream out;
@@ -117,8 +121,6 @@ public class ClienteSocketGUI extends JFrame {
     public ClienteSocketGUI() throws IOException {
         this.clasesCargadas = cargarPlugins();
         this.clasesInstanciables = cargarClasesInstanciables(clasesCargadas);
-        System.out.println(clasesCargadas);
-        System.out.println(clasesInstanciables);
         // Configuración de la interfaz
         setTitle("Solicitud de Asientos");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -208,7 +210,7 @@ public class ClienteSocketGUI extends JFrame {
                 throw new RuntimeException(ex);
             }
         });
-        aceptarButton.addActionListener(e -> enviarConfirmacion());
+        aceptarButton.addActionListener(e -> abrirVentanaPago());
         cancelarButton.addActionListener(e -> {
             try {
                 cancelarEspacios();
@@ -216,7 +218,46 @@ public class ClienteSocketGUI extends JFrame {
                 throw new RuntimeException(ex);
             }
         });
+    }
 
+    public void abrirVentanaPago() {
+        this.setVisible(false);
+        Class clase = clasesInstanciables.get("VisaPayment");
+        try {
+            PaymentPlugin plugin= (PaymentPlugin) clase.getConstructors()[0].newInstance();
+            System.out.println(plugin.getStateSold());
+            plugin.openPaymentWindow("VIP",5,15000);
+            JFrame ventanaPago = plugin.getPaymentFrame();
+            ventanaPago.addWindowListener(new WindowAdapter() {
+                @Override
+                public void windowClosed(WindowEvent e) {
+                    // Actualizar el estado de venta
+                    ventaRealizada = plugin.getStateSold();
+                    System.out.println(ventaRealizada);
+                    if(ventaRealizada){
+                        enviarConfirmacion();
+                    }
+                    else{
+                        try {
+                            cancelarEspacios();
+                        } catch (IOException ex) {
+                            throw new RuntimeException(ex);
+                        }
+                    }
+
+                    // Volver a mostrar la ventana principal
+                    ClienteSocketGUI.this.setVisible(true);
+                }
+            });
+        } catch (SecurityException ex) {
+            Logger.getLogger(ClienteSocketGUI.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (InvocationTargetException e) {
+            throw new RuntimeException(e);
+        } catch (InstantiationException e) {
+            throw new RuntimeException(e);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void actualizarMapaPrincipal() {
