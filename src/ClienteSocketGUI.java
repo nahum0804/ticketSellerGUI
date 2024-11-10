@@ -3,12 +3,11 @@ import GUI.PaymentPlugin;
 import OBJECTS.MatrixSeats;
 import org.json.JSONArray;
 import org.json.JSONObject;
-
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
-import javax.swing.event.ListSelectionEvent;
-import javax.swing.event.ListSelectionListener;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.*;
@@ -54,7 +53,6 @@ public class ClienteSocketGUI extends JFrame {
 
     private static Map cargarPlugins(){
         Map<String, Class> classList = new HashMap<>();
-        //LinkedList<> classList = new LinkedList();
         File pluginFolder=new File(PLUGIN_FOLDER);
         if(!pluginFolder.exists())
         {
@@ -105,7 +103,6 @@ public class ClienteSocketGUI extends JFrame {
 
     public static Map cargarClasesInstanciables(Map listaClases){
         Map<String, Class> clasesInstanciables = new HashMap<String,Class>();
-        //LinkedList clasesInstanciables = new LinkedList();
         listaClases.forEach((c,v) -> {
             Class[] interfaces=((Class)v).getInterfaces();
             for (Class anInterface : interfaces) {
@@ -222,42 +219,75 @@ public class ClienteSocketGUI extends JFrame {
 
     public void abrirVentanaPago() {
         this.setVisible(false);
-        Class clase = clasesInstanciables.get("VisaPayment");
-        try {
-            PaymentPlugin plugin= (PaymentPlugin) clase.getConstructors()[0].newInstance();
-            System.out.println(plugin.getStateSold());
-            plugin.openPaymentWindow("VIP",5,15000);
-            JFrame ventanaPago = plugin.getPaymentFrame();
-            ventanaPago.addWindowListener(new WindowAdapter() {
-                @Override
-                public void windowClosed(WindowEvent e) {
-                    // Actualizar el estado de venta
-                    ventaRealizada = plugin.getStateSold();
-                    System.out.println(ventaRealizada);
-                    if(ventaRealizada){
-                        enviarConfirmacion();
-                    }
-                    else{
-                        try {
-                            cancelarEspacios();
-                        } catch (IOException ex) {
-                            throw new RuntimeException(ex);
-                        }
-                    }
 
-                    // Volver a mostrar la ventana principal
-                    ClienteSocketGUI.this.setVisible(true);
+        JFrame seleccionPagoFrame = new JFrame("Seleccione el método de pago");
+        seleccionPagoFrame.setSize(300, 150);
+        seleccionPagoFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+
+        //ComboBox con las opciones de clases instanciables
+        JComboBox<String> comboBox = new JComboBox<>(clasesInstanciables.keySet().toArray(new String[0]));
+        comboBox.setSelectedIndex(0); // No seleccionar ninguno por defecto
+
+        // Botón para confirmar la selección
+        JButton seleccionarButton = new JButton("Seleccionar");
+
+        // Panel para organizar ComboBox y botón
+        JPanel panel = new JPanel();
+        panel.add(comboBox);
+        panel.add(seleccionarButton);
+        seleccionPagoFrame.add(panel);
+        seleccionPagoFrame.setLocationRelativeTo(null); // Centrar la ventana
+        seleccionPagoFrame.setVisible(true);
+
+        // Acción al seleccionar el botón "Seleccionar"
+        seleccionarButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String seleccion = (String) comboBox.getSelectedItem();
+
+                if (seleccion != null) {
+                    seleccionPagoFrame.dispose(); // Cerrar el selector de pago
+
+                    // Obtener la clase seleccionada
+                    Class clase = clasesInstanciables.get(seleccion);
+
+                    try {
+                        // Instanciar y abrir el plugin
+                        PaymentPlugin plugin = (PaymentPlugin) clase.getConstructors()[0].newInstance();
+                        plugin.openPaymentWindow(String.valueOf(categoriaComboBox.getSelectedItem()), 5, 15000);
+                        JFrame ventanaPago = plugin.getPaymentFrame();
+
+                        // Añadir un WindowListener para el cierre de la ventana de pago
+                        ventanaPago.addWindowListener(new WindowAdapter() {
+                            @Override
+                            public void windowClosed(WindowEvent e) {
+                                // Actualizar el estado de venta
+                                ventaRealizada = plugin.getStateSold();
+                                System.out.println("Venta realizada: " + ventaRealizada);
+
+                                // Ejecutar confirmación o cancelación según el estado de la venta
+                                if (ventaRealizada) {
+                                    enviarConfirmacion();
+                                } else {
+                                    try {
+                                        cancelarEspacios();
+                                    } catch (IOException ex) {
+                                        ex.printStackTrace();
+                                    }
+                                }
+
+                                // Volver a mostrar la ventana principal
+                                ClienteSocketGUI.this.setVisible(true);
+                            }
+                        });
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                        JOptionPane.showMessageDialog(null, "Error al abrir el método de pago seleccionado.");
+                        ClienteSocketGUI.this.setVisible(true); // Volver a mostrar la ventana principal si hay un error
+                    }
                 }
-            });
-        } catch (SecurityException ex) {
-            Logger.getLogger(ClienteSocketGUI.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (InvocationTargetException e) {
-            throw new RuntimeException(e);
-        } catch (InstantiationException e) {
-            throw new RuntimeException(e);
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(e);
-        }
+            }
+        });
     }
 
     private void actualizarMapaPrincipal() {
