@@ -217,6 +217,24 @@ public class ClienteSocketGUI extends JFrame {
         });
     }
 
+    private double calculatePrice(String categoria, int cantidad){
+        double num = 0;
+        switch (categoria) {
+            case "A1":
+                num = cantidad*5000;
+            case "A2":
+                num = cantidad*4000;
+            case "B":
+                num = cantidad*3000;
+            case "C":
+                num = cantidad*2000;
+            default:
+                num = cantidad*6000;
+
+        }
+        return num;
+    }
+
     public void abrirVentanaPago() {
         this.setVisible(false);
 
@@ -253,8 +271,10 @@ public class ClienteSocketGUI extends JFrame {
 
                     try {
                         // Instanciar y abrir el plugin
+                        int cantidad = Integer.parseInt(cantidadTextField.getText());
+                        String categoria = String.valueOf(categoriaComboBox.getSelectedItem());
                         PaymentPlugin plugin = (PaymentPlugin) clase.getConstructors()[0].newInstance();
-                        plugin.openPaymentWindow(String.valueOf(categoriaComboBox.getSelectedItem()), 5, 15000);
+                        plugin.openPaymentWindow(categoria, cantidad, calculatePrice(seleccion, cantidad));
                         JFrame ventanaPago = plugin.getPaymentFrame();
 
                         // Añadir un WindowListener para el cierre de la ventana de pago
@@ -364,6 +384,22 @@ public class ClienteSocketGUI extends JFrame {
         }
     }
 
+    private int transformRow(int num,String categoria){
+        switch (categoria) {
+            case "A1":
+                return num-4;
+            case "A2":
+                return num-7;
+            case "B":
+                return num-10;
+            case "C":
+                return num-13;
+            default:
+                return num+1;
+
+        }
+    }
+
     private void enviarSolicitud() throws IOException {
         String host = "127.0.0.1";
         int puerto = 7878;
@@ -415,7 +451,7 @@ public class ClienteSocketGUI extends JFrame {
                         String[] site = new String[4];
                         site[0] = categoriaComboBox.getSelectedItem().toString();
                         site[1] = "Selected";
-                        site[2] = String.valueOf(asiento.getInt("row_index")+1);
+                        site[2] = String.valueOf(transformRow(asiento.getInt("row_index"),site[0]));
                         site[3] = String.valueOf(asiento.getInt("site_index"));
                         option.add(site);
                         combinacionString.append("  Fila: ").append(asiento.getInt("row_index"))
@@ -425,14 +461,8 @@ public class ClienteSocketGUI extends JFrame {
                     options.add(option);
                     listaCombinaciones.add(combinacionString.toString()); // Añadir la combinación como texto a la lista
                 }
-
-
-
-                // Actualizar la tabla con las combinaciones
                 actualizarTabla(listaCombinaciones);
-
                 iniciarContador();
-
             } catch (Exception e) {
                 System.out.println("Error: La respuesta del servidor no es un JSON válido.");
                 System.out.println("Respuesta recibida: " + respuesta);
@@ -471,19 +501,16 @@ public class ClienteSocketGUI extends JFrame {
         out.flush();
         limpiarResultados();
         tiempoLabel.setVisible(false);
-
         if (contadorTiempo != null) {
             contadorTiempo.stop();
         }
-
         actualizarMapaPrincipal(new MatrixSeats());
     }
 
     private void iniciarContador() {
-        tiempoRestante = 120;
+        tiempoRestante = 240;
         tiempoLabel.setText("Tiempo restante: " + tiempoRestante + " segundos");
         tiempoLabel.setVisible(true);
-
         contadorTiempo = new Timer(1000, e -> {
             tiempoRestante--;
             tiempoLabel.setText("Tiempo restante: " + tiempoRestante + " segundos");
